@@ -1,0 +1,7 @@
+ami_id                  = "ami-0123456789abcdef0"
+instance_type           = "t3.micro"
+key_name                = "my-key-pair"
+subnet_id               = "subnet-0123456789abcdef0"
+vpc_security_group_ids  = ["sg-0123456789abcdef0"]
+iam_instance_profile    = "my-ec2-instance-profile"
+github_runner_token     = "ghp_yourgithubtokenhere"
