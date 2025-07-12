@@ -1,7 +1,3 @@
-variable "aws_account_id" {
-  description = "AWS Account ID for ARNs"
-  type        = string
-}
 
 resource "aws_iam_role" "github_runner" {
   name = "github-runner-role"
