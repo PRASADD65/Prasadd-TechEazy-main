@@ -1,9 +1,7 @@
 region                  = "ap-south-2"
-ami_id                  = "ami-0123456789abcdef0"
+ami_id                  = "ami-07891c5a242abf4bc"
 instance_type           = "t3.micro"
-key_name                = "my-key-pair"
-subnet_id               = "subnet-0123456789abcdef0"
-vpc_security_group_ids  = ["sg-0123456789abcdef0"]
-iam_instance_profile    = "my-ec2-instance-profile"
+key_name                = "hyd"
+iam_instance_profile    = "github-runner-profile"
 github_runner_token     = "ghp_yourgithubtokenhere"
-aws_account_id = "YOUR_AWS_ACCOUNT_ID"
+aws_account_id = "390403879955"
