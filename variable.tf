@@ -39,3 +39,8 @@ variable "github_runner_token" {
   type        = string
   sensitive   = true
 }
+
+variable "aws_account_id" {
+  description = "AWS Account ID for ARNs"
+  type        = string
+}
