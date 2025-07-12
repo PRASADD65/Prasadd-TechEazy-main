@@ -1,4 +1,4 @@
-data "aws_subnet_ids" "default" {
+data "aws_subnets" "default" {
   vpc_id = data.aws_vpc.default.id
 }
 
