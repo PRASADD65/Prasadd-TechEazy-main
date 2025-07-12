@@ -6,3 +6,4 @@ subnet_id               = "subnet-0123456789abcdef0"
 vpc_security_group_ids  = ["sg-0123456789abcdef0"]
 iam_instance_profile    = "my-ec2-instance-profile"
 github_runner_token     = "ghp_yourgithubtokenhere"
+aws_account_id = "YOUR_AWS_ACCOUNT_ID"
