@@ -19,15 +19,6 @@ variable "key_name" {
   type        = string
 }
 
-variable "subnet_id" {
-  description = "Subnet ID for the EC2 instance"
-  type        = string
-}
-
-variable "vpc_security_group_ids" {
-  description = "List of security group IDs"
-  type        = list(string)
-}
 
 variable "iam_instance_profile" {
   description = "IAM instance profile name"
