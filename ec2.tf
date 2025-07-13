@@ -22,8 +22,10 @@ resource "aws_instance" "github_runner" {
 user_data = templatefile("${path.module}/ec2config.sh", {
   GH_RUNNER_TOKEN     = var.github_runner_token,
   RUNNER_VERSION      = "2.326.0",
-  GH_REPO_URL         = "https://github.com/PRASADD65/tech_eazy_PRASADD65_aws_internship"
+  GH_REPO_URL         = "https://github.com/PRASADD65/tech_eazy_PRASADD65_aws_internship",
+  NODE_EXPORTER_VERSION = "1.6.1"
 })
+
 
 
   tags = {
