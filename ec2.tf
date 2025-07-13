@@ -19,11 +19,12 @@ resource "aws_instance" "github_runner" {
 
   associate_public_ip_address = true
 
-  user_data = templatefile("${path.module}/ec2config.sh", {
-    github_runner_token = var.github_runner_token
-    RUNNER_VERSION      = "2.326.0"
-    GH_REPO_URL         = "https://github.com/PRASADD65/tech_eazy_PRASADD65_aws_internship"
-  })
+user_data = templatefile("${path.module}/ec2config.sh", {
+  GH_RUNNER_TOKEN     = var.github_runner_token,
+  RUNNER_VERSION      = "2.326.0",
+  GH_REPO_URL         = "https://github.com/PRASADD65/tech_eazy_PRASADD65_aws_internship"
+})
+
 
   tags = {
     Name = "GitHubRunnerEC2"
