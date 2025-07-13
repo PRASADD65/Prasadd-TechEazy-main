@@ -1,6 +1,6 @@
 region                  = "ap-south-2"
 ami_id                  = "ami-07891c5a242abf4bc"
-instance_type           = "t3.micro"
+instance_type           = "t3.small"
 key_name                = "hyd"
 iam_instance_profile    = "github-runner-profile"
 github_runner_token     = "BI3ZDOGKC34HPYMA2Z7G7NDIOOPAS"
