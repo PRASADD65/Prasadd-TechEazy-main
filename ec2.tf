@@ -21,6 +21,7 @@ resource "aws_instance" "github_runner" {
 
   user_data = templatefile("${path.module}/ec2config.sh", {
     github_runner_token = var.github_runner_token
+    RUNNER_VERSION      = "2.326.0"
   })
 
   tags = {
