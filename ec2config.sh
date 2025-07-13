@@ -20,7 +20,7 @@ curl -o actions-runner-linux-x64.tar.gz -L https://github.com/actions/runner/rel
 tar xzf actions-runner-linux-x64.tar.gz
 
 GH_RUNNER_TOKEN="${GH_RUNNER_TOKEN}"
-GH_RUNNER_TOKEN="${github_runner_token}"
+GH_RUNNER_TOKEN="${GH_RUNNER_TOKEN}"
 ./config.sh --url ${GH_REPO_URL} --token ${GH_RUNNER_TOKEN} --unattended --name root-runner --labels self-hosted,ubuntu,ec2
 ./run.sh &
 
