@@ -10,8 +10,10 @@ systemctl enable docker
 systemctl start docker
 
 # Install Node.js (LTS version)
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-apt-get install -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get update -y
+sudo apt-get install -y nodejs
+
 
 
 # -------------------------------
