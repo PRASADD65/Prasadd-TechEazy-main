@@ -1,26 +1,27 @@
 #!/bin/bash
 set -e
 
+# -------------------------------
 # Update and install dependencies
+# -------------------------------
 apt update && apt install -y curl jq git python3 python3-pip unzip tar wget
 
+# -------------------------------
 # Create directories
+# -------------------------------
 mkdir -p /root/github-runner /root/runnerlog/dev /root/runnerlog/prod /var/lib/node_exporter/textfile_collector
 
 # -------------------------------
 # Install GitHub Actions Runner
 # -------------------------------
 cd /root/github-runner
-RUNNER_VERSION="2.326.0"
+RUNNER_VERSION="${RUNNER_VERSION}"
 curl -o actions-runner-linux-x64.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
 tar xzf actions-runner-linux-x64.tar.gz
 
-# Configure GitHub runner
 GH_REPO_URL="https://github.com/PRASADD65/tech_eazy_PRASADD65_aws_internship"
 GH_RUNNER_TOKEN="${github_runner_token}"
 ./config.sh --url ${GH_REPO_URL} --token ${GH_RUNNER_TOKEN} --unattended --name root-runner --labels self-hosted,ubuntu,ec2
-
-# Start the runner in background
 ./run.sh &
 
 # -------------------------------
@@ -33,7 +34,6 @@ tar xzf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
 cp node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter /usr/local/bin/
 useradd -rs /bin/false node_exporter
 
-# Create systemd service for node_exporter
 cat <<EOF > /etc/systemd/system/node_exporter.service
 [Unit]
 Description=Node Exporter
@@ -41,8 +41,7 @@ After=network.target
 
 [Service]
 User=node_exporter
-ExecStart=/usr/local/bin/node_exporter \
-  --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+ExecStart=/usr/local/bin/node_exporter --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
 
 [Install]
 WantedBy=default.target
@@ -65,7 +64,6 @@ mkdir -p /etc/prometheus /var/lib/prometheus
 cp -r prometheus-${PROM_VERSION}.linux-amd64/consoles /etc/prometheus
 cp -r prometheus-${PROM_VERSION}.linux-amd64/console_libraries /etc/prometheus
 
-# Prometheus config
 cat <<EOF > /etc/prometheus/prometheus.yml
 global:
   scrape_interval: 15s
@@ -80,7 +78,6 @@ scrape_configs:
     metrics_path: /metrics
 EOF
 
-# Create systemd service for Prometheus
 cat <<EOF > /etc/systemd/system/prometheus.service
 [Unit]
 Description=Prometheus
@@ -155,7 +152,7 @@ EOF
 chmod +x /root/log_parser.py
 
 # -------------------------------
-# systemd service for log parser
+# Systemd service for log parser
 # -------------------------------
 cat <<EOF > /etc/systemd/system/cicd_log_parser.service
 [Unit]
