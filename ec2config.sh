@@ -4,32 +4,70 @@ set -e
 # -------------------------------
 # Update and install dependencies
 # -------------------------------
-apt update && apt install -y curl jq git python3 python3-pip unzip tar wget
+apt update && apt install -y curl jq git python3 python3-pip unzip tar wget docker.io
+
+systemctl enable docker
+systemctl start docker
 
 # -------------------------------
 # Create directories
 # -------------------------------
-mkdir -p /root/github-runner /root/runnerlog/dev /root/runnerlog/prod /var/lib/node_exporter/textfile_collector
+mkdir -p /home/ubuntu/github-runner /home/ubuntu/runnerlog/dev /home/ubuntu/runnerlog/prod /var/lib/node_exporter/textfile_collector
 
 # -------------------------------
-# Install GitHub Actions Runner
+# Download GitHub Actions Runner
 # -------------------------------
-cd /root/github-runner
+cd /home/ubuntu/github-runner
 RUNNER_VERSION="${RUNNER_VERSION}"
-curl -o actions-runner-linux-x64.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+curl -o actions-runner-linux-x64.tar.gz -L "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
 tar xzf actions-runner-linux-x64.tar.gz
+chown -R ubuntu:ubuntu /home/ubuntu/github-runner
 
-GH_RUNNER_TOKEN="${GH_RUNNER_TOKEN}"
-GH_RUNNER_TOKEN="${GH_RUNNER_TOKEN}"
-./config.sh --url ${GH_REPO_URL} --token ${GH_RUNNER_TOKEN} --unattended --name root-runner --labels self-hosted,ubuntu,ec2
-./run.sh &
+# -------------------------------
+# Runner startup script
+# -------------------------------
+cat <<EOF > /home/ubuntu/ubuntu-runner.sh
+#!/bin/bash
+export GH_REPO_URL="${GH_REPO_URL}"
+export GH_RUNNER_TOKEN="${GH_RUNNER_TOKEN}"
+
+cd /home/ubuntu/github-runner
+./config.sh --url "\${GH_REPO_URL}" --token "\${GH_RUNNER_TOKEN}" --unattended \
+  --name ubuntu-runner --labels self-hosted,ubuntu,ec2
+./run.sh
+EOF
+
+chmod +x /home/ubuntu/ubuntu-runner.sh
+chown ubuntu:ubuntu /home/ubuntu/ubuntu-runner.sh
+
+# -------------------------------
+# GitHub Runner systemd service
+# -------------------------------
+cat <<EOF > /etc/systemd/system/github-runner.service
+[Unit]
+Description=GitHub Actions Runner
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/github-runner
+ExecStart=/bin/bash /home/ubuntu/ubuntu-runner.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reexec
+systemctl enable github-runner
+systemctl start github-runner
 
 # -------------------------------
 # Install Node Exporter
 # -------------------------------
 cd /opt
-NODE_EXPORTER_VERSION="1.6.1"
-curl -LO https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
+NODE_EXPORTER_VERSION="${NODE_EXPORTER_VERSION}"
+curl -LO "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
 tar xzf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
 cp node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter /usr/local/bin/
 useradd -rs /bin/false node_exporter
@@ -55,8 +93,8 @@ systemctl start node_exporter
 # Install Prometheus
 # -------------------------------
 cd /opt
-PROM_VERSION="2.48.0"
-curl -LO https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
+PROM_VERSION="${PROM_VERSION}"
+curl -LO "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
 tar xzf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
 cp prometheus-${PROM_VERSION}.linux-amd64/prometheus /usr/local/bin/
 cp prometheus-${PROM_VERSION}.linux-amd64/promtool /usr/local/bin/
@@ -109,13 +147,13 @@ systemctl enable grafana-server
 systemctl start grafana-server
 
 # -------------------------------
-# Install Log Parser
+# Log Parser Setup
 # -------------------------------
 cat <<EOF > /root/log_parser.py
 import os
 import time
 
-log_dirs = {'dev': '/root/runnerlog/dev', 'prod': '/root/runnerlog/prod'}
+log_dirs = {'dev': '/home/ubuntu/runnerlog/dev', 'prod': '/home/ubuntu/runnerlog/prod'}
 output_file = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
 sns_log_file = '/var/log/cicd_sns_alert.txt'
 keywords = ['error', 'failed', 'exception']
@@ -152,7 +190,7 @@ EOF
 chmod +x /root/log_parser.py
 
 # -------------------------------
-# Systemd service for log parser
+# Systemd service for Log Parser
 # -------------------------------
 cat <<EOF > /etc/systemd/system/cicd_log_parser.service
 [Unit]
