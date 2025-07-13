@@ -9,6 +9,11 @@ apt update && apt install -y curl jq git python3 python3-pip unzip tar wget dock
 systemctl enable docker
 systemctl start docker
 
+# Install Node.js (LTS version)
+curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+apt-get install -y nodejs
+
+
 # -------------------------------
 # Create directories
 # -------------------------------
