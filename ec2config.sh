@@ -36,10 +36,15 @@ chown -R ubuntu:ubuntu /home/ubuntu/github-runner
 cat <<EOF > /home/ubuntu/ubuntu-runner.sh
 #!/bin/bash
 
+export GH_REPO_URL="${GH_REPO_URL}"
+export GH_RUNNER_TOKEN="${GH_RUNNER_TOKEN}"
+
 cd /home/ubuntu/github-runner
 ./config.sh --url "${GH_REPO_URL}" --token "${GH_RUNNER_TOKEN}" --unattended \
   --name ubuntu-runner --labels self-hosted,ubuntu,ec2
+
 ./run.sh
+
 EOF
 
 chmod +x /home/ubuntu/ubuntu-runner.sh
