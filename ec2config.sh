@@ -2,22 +2,19 @@
 set -e
 
 # -------------------------------
-# Update and install dependencies
+# Install dependencies
 # -------------------------------
-apt update && apt install -y curl jq git python3 python3-pip unzip tar wget docker.io awscli
+apt update && apt install -y curl jq git python3 python3-pip unzip tar wget docker.io
 
-systemctl enable docker
-systemctl start docker
-
-# Install Node.js (LTS)
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-apt install -y nodejs
+# Install AWS CLI v2 (Ubuntu 24.04 fix)
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
 
 # -------------------------------
-# Create Directories
+# Create directories
 # -------------------------------
 mkdir -p /home/ubuntu/github-runner /home/ubuntu/runnerlog/dev /home/ubuntu/runnerlog/prod /var/lib/node_exporter/textfile_collector /var/lib/grafana/dashboards
-
 chown -R ubuntu:ubuntu /home/ubuntu/runnerlog
 
 # -------------------------------
@@ -70,7 +67,6 @@ cd /opt
 curl -LO "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
 tar xzf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
 cp node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter /usr/local/bin/
-
 useradd -rs /bin/false node_exporter
 
 cat <<EOF > /etc/systemd/system/node_exporter.service
@@ -90,7 +86,9 @@ systemctl daemon-reexec
 systemctl enable node_exporter
 systemctl start node_exporter
 
-# Prometheus Install
+# -------------------------------
+# Prometheus Setup
+# -------------------------------
 PROM_VERSION="${PROM_VERSION}"
 curl -LO "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
 tar xzf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
@@ -107,10 +105,6 @@ scrape_configs:
   - job_name: 'node_exporter'
     static_configs:
       - targets: ['localhost:9100']
-  - job_name: 'cicd_log_parser'
-    static_configs:
-      - targets: ['localhost:9100']
-    metrics_path: /metrics
 EOF
 
 cat <<EOF > /etc/systemd/system/prometheus.service
@@ -135,7 +129,7 @@ systemctl enable prometheus
 systemctl start prometheus
 
 # -------------------------------
-# Grafana & Dashboard
+# Grafana Setup
 # -------------------------------
 wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
 add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
@@ -184,7 +178,7 @@ systemctl enable grafana-server
 systemctl start grafana-server
 
 # -------------------------------
-# Log Parser Script (with Execution Time + SNS)
+# Log Parser Script
 # -------------------------------
 cat <<EOF > /root/log_parser.py
 import os, time, boto3
@@ -225,4 +219,4 @@ def parse_logs():
             boto3.client('sns', region_name='ap-south-1').publish(
                 TopicArn=sns_topic_arn,
                 Subject='CI/CD Pipeline Failure',
-                Message
+                Message='\\n\\n
