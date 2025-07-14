@@ -5,6 +5,9 @@ set -e
 # Install dependencies
 # -------------------------------
 apt update && apt install -y curl jq git python3 python3-pip unzip tar wget docker.io
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs
+
 
 # Install AWS CLI v2 (Ubuntu 24.04 fix)
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
