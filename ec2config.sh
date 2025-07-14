@@ -28,16 +28,10 @@ curl -o runner.tar.gz -L "https://github.com/actions/runner/releases/download/v$
 tar xzf runner.tar.gz
 chown -R ubuntu:ubuntu /home/ubuntu/github-runner
 
-# Runner Startup Script
-cd /home/ubuntu/github-runner
-./config.sh --url "${GH_REPO_URL}" --token "${GH_RUNNER_TOKEN}" --unattended \
-  --name ubuntu-runner --labels self-hosted,ubuntu,ec2
-./run.sh &
+# Configure the runner
+sudo -u ubuntu ./config.sh --url "${GH_REPO_URL}" --token "${GH_RUNNER_TOKEN}" --unattended   --name ubuntu-runner --labels self-hosted,ubuntu,ec2
 
-chmod +x /home/ubuntu/ubuntu-runner.sh
-chown ubuntu:ubuntu /home/ubuntu/ubuntu-runner.sh
-
-# GitHub Runner systemd
+# Create systemd service for GitHub runner
 cat <<EOF > /etc/systemd/system/github-runner.service
 [Unit]
 Description=GitHub Actions Runner
@@ -46,7 +40,7 @@ After=network.target
 [Service]
 User=ubuntu
 WorkingDirectory=/home/ubuntu/github-runner
-ExecStart=/bin/bash /home/ubuntu/ubuntu-runner.sh
+ExecStart=/home/ubuntu/github-runner/run.sh
 Restart=always
 
 [Install]
