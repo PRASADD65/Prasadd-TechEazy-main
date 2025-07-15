@@ -13,22 +13,6 @@ resource "aws_iam_role" "github_runner" {
   })
 }
 
-resource "aws_iam_policy" "sns_publish_only" {
-  name = "sns-publish-only"
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["sns:Publish"]
-      Resource = "arn:aws:sns:ap-south-2:${var.aws_account_id}:zeromile-stage-alert"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "sns_publish_only" {
-  role       = aws_iam_role.github_runner.name
-  policy_arn = aws_iam_policy.sns_publish_only.arn
-}
 
 resource "aws_iam_policy" "cloudwatch_logs_write" {
   name = "cloudwatch-logs-write"
