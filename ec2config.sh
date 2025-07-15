@@ -200,7 +200,7 @@ systemctl start grafana-server
 # -------------------------------
 # Log Parser Script
 # -------------------------------
-cat <<EOF > /root/log_parser.py
+cat <<'EOF' > /root/log_parser.py
 import os
 import time
 import boto3
@@ -296,6 +296,8 @@ if __name__ == "__main__":
 
 EOF
 chmod +x /root/log_parser.py
+
+echo "Log Parser Written" >> /var/log/cloud-init-output.log
 
 # --- Schedule the parser to run every 5 mins ---
 (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | crontab -
