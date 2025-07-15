@@ -60,3 +60,27 @@ resource "aws_iam_instance_profile" "github_runner" {
   name = "github-runner-profile"
   role = aws_iam_role.github_runner.name
 }
+
+resource "aws_iam_policy" "sns_publish_policy" {
+  name        = "SNSPublishPolicy"
+  description = "Allow publishing to CI/CD failure alert topic"
+  policy      = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = [ "sns:Publish" ],
+        Resource = "arn:aws:sns:${var.region}:${var.account_id}:cicd-failure-alerts"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach_sns_policy" {
+  role       = aws_iam_role.github_runner_role.name
+  policy_arn = aws_iam_policy.sns_publish_policy.arn
+}
+
+
+
+
