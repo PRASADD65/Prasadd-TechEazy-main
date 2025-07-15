@@ -139,31 +139,56 @@ EOF
 cat <<EOF > /var/lib/grafana/dashboards/cicd_dashboard.json
 {
   "title": "CI/CD Pipeline Failures",
+  "editable": true,
   "panels": [
     {
       "type": "graph",
       "title": "Failures by Stage",
-      "targets": [{
-        "expr": "cicd_pipeline_failure",
-        "legendFormat": "{{stage}} - {{reason}}"
-      }],
+      "targets": [
+        {
+          "expr": "sum by(stage, reason) (cicd_pipeline_failure)",
+          "legendFormat": "{{stage}} - {{reason}}"
+        }
+      ],
       "xaxis": {"mode": "time"},
-      "yaxes": [{"label": "Failures"}]
+      "yaxes": [{"label": "Failures"}],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "color": "green", "value": 0 },
+          { "color": "yellow", "value": 1 },
+          { "color": "red", "value": 2 }
+        ]
+      },
+      "fill": 1,
+      "lineWidth": 2
     },
     {
       "type": "graph",
       "title": "Execution Time by Stage",
-      "targets": [{
-        "expr": "cicd_pipeline_exec_seconds",
-        "legendFormat": "{{stage}}"
-      }],
+      "targets": [
+        {
+          "expr": "cicd_pipeline_exec_seconds",
+          "legendFormat": "{{stage}}"
+        }
+      ],
       "xaxis": {"mode": "time"},
-      "yaxes": [{"label": "Seconds"}]
+      "yaxes": [{"label": "Seconds"}],
+      "fill": 1,
+      "lineWidth": 2,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "color": "green", "value": 0 },
+          { "color": "yellow", "value": 30 },
+          { "color": "red", "value": 60 }
+        ]
+      }
     }
-  ],
-  "editable": true
+  ]
 }
 EOF
+
 
 systemctl enable grafana-server
 systemctl start grafana-server
@@ -178,36 +203,52 @@ log_dirs = {'dev': '/home/ubuntu/runnerlog/dev', 'prod': '/home/ubuntu/runnerlog
 output_file = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
 sns_log_file = '/var/log/cicd_sns_alert.txt'
 keywords = ['error', 'failed', 'exception']
-sns_topic_arn = "arn:aws:sns:ap-south-1:${ACCOUNT_ID}:cicd-failure-alerts"
+account_id = os.getenv("ACCOUNT_ID", "undefined")
+sns_topic_arn = f"arn:aws:sns:ap-south-1:{account_id}:cicd-failure-alerts"
 
 def parse_logs():
     metrics = []
     alerts = []
+
     for stage, path in log_dirs.items():
         if not os.path.exists(path): continue
-        files = sorted([f for f in os.listdir(path) if f.endswith('.log')], reverse=True)
-        if not files: continue
-        latest = os.path.join(path, files[0])
-        start_time = os.path.getctime(latest)
-        end_time = os.path.getmtime(latest)
-        exec_seconds = int(end_time - start_time)
-        with open(latest, 'r') as f:
-            lines = f.readlines()
-        failed = any(any(k in line.lower() for k in keywords) for line in lines)
-        if failed:
-            reason = next((line.strip() for line in lines if any(k in line.lower() for k in keywords)), 'unknown')
-            metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="{reason}"}} 1')
-            alerts.append(f"Stage: {stage}\nReason: {reason}\nExecutionTime: {exec_seconds}s\nLog: {latest}\n\nLast 50 lines:\n{''.join(lines[-50:])}")
-        else:
-            metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="none"}} 0')
+
+        failure_count = 0
+        exec_seconds = 0
+        latest_log = None
+        latest_lines = []
+
+        files = sorted([f for f in os.listdir(path) if f.endswith('.log')])
+        for fname in files:
+            full_path = os.path.join(path, fname)
+            with open(full_path) as f:
+                lines = f.readlines()
+            if any(any(k in line.lower() for k in keywords) for line in lines):
+                failure_count += 1
+                if not latest_log:
+                    latest_log = full_path
+                    latest_lines = lines
+                    exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
+
+        metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
         metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
+
+        if failure_count > 0 and latest_log:
+            reason_line = next((line.strip() for line in latest_lines if any(k in line.lower() for k in keywords)), "unknown")
+            alerts.append(f"Stage: {stage}\nReason: {reason_line}\nExecutionTime: {exec_seconds}s\nLog: {latest_log}\n\nLast 50 lines:\n{''.join(latest_lines[-50:])}")
+
     with open(output_file, 'w') as f:
-        f.write('\\n'.join(metrics) + '\\n')
+        f.write('\n'.join(metrics) + '\n')
+
     if alerts:
         with open(sns_log_file, 'w') as f:
-            f.write('\\n\\n'.join(alerts))
+            f.write('\n\n'.join(alerts))
         try:
             boto3.client('sns', region_name='ap-south-1').publish(
                 TopicArn=sns_topic_arn,
                 Subject='CI/CD Pipeline Failure',
-                Message='\\n\\n
+                Message='\n\n'.join(alerts)
+            )
+        except Exception as e:
+            print("SNS publish failed:", e)
+EOF
