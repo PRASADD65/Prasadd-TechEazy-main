@@ -54,7 +54,7 @@ resource "aws_iam_policy" "sns_publish_policy" {
       {
         Effect   = "Allow",
         Action   = [ "sns:Publish" ],
-        Resource = "arn:aws:sns:${var.region}:${var.account_id}:cicd-failure-alerts"
+        Resource = "arn:aws:sns:${var.region}:${var.aws_account_id}:cicd-failure-alerts"
       }
     ]
   })
