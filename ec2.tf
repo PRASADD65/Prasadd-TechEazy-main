@@ -24,7 +24,7 @@ user_data = templatefile("${path.module}/ec2config.sh", {
   RUNNER_VERSION        = "2.326.0",
   GH_REPO_URL           = "https://github.com/PRASADD65/tech_eazy_PRASADD65_aws_internship",
   NODE_EXPORTER_VERSION = "1.6.1",
-  PROM_VERSION          = "2.48.0"
+  PROM_VERSION          = "2.48.0",
   ACCOUNT_ID            = var.aws_account_id
 })
 
