@@ -28,3 +28,8 @@ jobs:
 
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
+     
+      - name: Trigger Log Parser Over SSH
+        run: |
+           ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.set_stage_and_workspace.outputs.ec2_public_ip }} \
+           'sudo python3 /root/log_parser.py'
