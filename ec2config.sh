@@ -197,21 +197,43 @@ systemctl start grafana-server
 # Log Parser Script
 # -------------------------------
 cat <<EOF > /root/log_parser.py
-import os, time, boto3
+import os
+import time
+import boto3
 
-log_dirs = {'dev': '/home/ubuntu/runnerlog/dev', 'prod': '/home/ubuntu/runnerlog/prod'}
+# Stage-specific log directories
+log_dirs = {
+    'dev': '/home/ubuntu/runnerlog/dev',
+    'prod': '/home/ubuntu/runnerlog/prod'
+}
+
+# Prometheus metrics and SNS alert file paths
 output_file = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
 sns_log_file = '/var/log/cicd_sns_alert.txt'
-keywords = ['error', 'failed', 'exception']
-account_id = os.getenv("ACCOUNT_ID", "undefined")
-sns_topic_arn = f"arn:aws:sns:ap-south-1:{account_id}:cicd-failure-alerts"
+
+# Failure keywords to look for in log files
+keywords = [
+    'error', 'failed', 'exception',
+    'terraform exited', 'exit code', 'code 1',
+    'no such file or directory', 'cannot destroy', 'resource not found'
+]
+
+# 🔐 Dynamically determine region and account ID
+session = boto3.session.Session()
+identity = boto3.client('sts').get_caller_identity()
+account_id = identity['Account']
+region = session.region_name or 'ap-south-2'
+
+# 🧭 Final SNS topic ARN
+sns_topic_arn = f"arn:aws:sns:{region}:{account_id}:cicd-failure-alerts"
 
 def parse_logs():
     metrics = []
     alerts = []
 
     for stage, path in log_dirs.items():
-        if not os.path.exists(path): continue
+        if not os.path.exists(path):
+            continue
 
         failure_count = 0
         exec_seconds = 0
@@ -221,34 +243,51 @@ def parse_logs():
         files = sorted([f for f in os.listdir(path) if f.endswith('.log')])
         for fname in files:
             full_path = os.path.join(path, fname)
-            with open(full_path) as f:
+            with open(full_path, 'r') as f:
                 lines = f.readlines()
-            if any(any(k in line.lower() for k in keywords) for line in lines):
+            lower_lines = [line.lower() for line in lines]
+
+            if any(any(k in line for k in keywords) for line in lower_lines):
                 failure_count += 1
                 if not latest_log:
                     latest_log = full_path
                     latest_lines = lines
                     exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
 
+        # Emit Prometheus-style metrics
         metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
         metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
 
+        # Build SNS alert if failure found
         if failure_count > 0 and latest_log:
-            reason_line = next((line.strip() for line in latest_lines if any(k in line.lower() for k in keywords)), "unknown")
-            alerts.append(f"Stage: {stage}\nReason: {reason_line}\nExecutionTime: {exec_seconds}s\nLog: {latest_log}\n\nLast 50 lines:\n{''.join(latest_lines[-50:])}")
+            reason_line = next(
+                (line.strip() for line in latest_lines if any(k in line.lower() for k in keywords)),
+                "unknown"
+            )
+            alerts.append(
+                f"Stage: {stage}\nReason: {reason_line}\nExecutionTime: {exec_seconds}s\nLog: {latest_log}\n\nLast 50 lines:\n{''.join(latest_lines[-50:])}"
+            )
 
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, 'w') as f:
         f.write('\n'.join(metrics) + '\n')
 
+    # Send SNS alert if needed
     if alerts:
         with open(sns_log_file, 'w') as f:
             f.write('\n\n'.join(alerts))
         try:
-            boto3.client('sns', region_name='ap-south-1').publish(
+            boto3.client('sns', region_name=region).publish(
                 TopicArn=sns_topic_arn,
                 Subject='CI/CD Pipeline Failure',
                 Message='\n\n'.join(alerts)
             )
+            print("✅ SNS publish succeeded")
         except Exception as e:
             print("SNS publish failed:", e)
+
+if __name__ == "__main__":
+    parse_logs()
+
 EOF
