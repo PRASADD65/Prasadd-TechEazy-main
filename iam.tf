@@ -61,10 +61,8 @@ resource "aws_iam_policy" "sns_publish_policy" {
 }
 
 resource "aws_iam_role_policy_attachment" "attach_sns_policy" {
-  role       = aws_iam_role.github_runner_role.name
+  role       = aws_iam_role.github_runner.name
   policy_arn = aws_iam_policy.sns_publish_policy.arn
 }
-
-
 
 
