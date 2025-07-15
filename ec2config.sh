@@ -18,13 +18,6 @@ echo "export AWS_REGION=\"${region}\"" >> /etc/environment
 echo "export ACCOUNT_ID=\"${account_id}\"" >> /etc/environment
 source /etc/environment
 
-# --- Deploy the parser script ---
-cp /tmp/log_parser.py /root/log_parser.py
-chmod +x /root/log_parser.py
-
-# --- Schedule the parser to run every 5 mins ---
-(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | crontab -
-
 # -------------------------------
 # Create directories
 # -------------------------------
@@ -302,3 +295,7 @@ if __name__ == "__main__":
     parse_logs()
 
 EOF
+chmod +x /root/log_parser.py
+
+# --- Schedule the parser to run every 5 mins ---
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | crontab -
