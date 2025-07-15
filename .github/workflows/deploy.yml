@@ -12,12 +12,13 @@ jobs:
 
     env:
       TF_VAR_aws_account_id: ${{ secrets.AWS_ACCOUNT_ID }}
+      TF_VAR_region: ap-south-2
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ap-south-2
 
     steps:
-      - name: Checkout repo
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -31,24 +32,24 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
-      
+
       - name: Get EC2 Public IP
         id: get_ip
         run: |
           IP=$(aws ec2 describe-instances \
-           --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
-           --query "Reservations[0].Instances[0].PublicIpAddress" \
-           --output text)
-          echo "EC2 IP is: $IP"
+            --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text)
           echo "ip=$IP" >> $GITHUB_OUTPUT
 
-      
+      - name: Wait for EC2 to Boot
+        run: |
+          echo "Waiting for EC2 to be ready..."
+          sleep 30
+
       - name: Trigger Log Parser Over SSH
         run: |
           echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem
           chmod 600 key.pem
           ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.get_ip.outputs.ip }} \
-           'sudo python3 /root/log_parser.py'
- 
-
-      
+            'sudo python3 /root/log_parser.py'
