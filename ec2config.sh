@@ -267,9 +267,9 @@ def parse_logs():
         # Capture all relevant error lines from latest log
             error_lines = [line.strip() for line in latest_lines if any(k in line.lower() for k in keywords)]
             error_summary = '\n'.join(error_lines) if error_lines else "No error lines found"
-        alerts.append(
-          f"Stage: {stage}\nExecutionTime: {exec_seconds}s\nLog: {latest_log}\n\nError Details:\n{error_summary}\n\nLast 50 lines:\n{''.join(latest_lines[-50:])}"
-        )
+            alerts.append(
+             f"Stage: {stage}\nExecutionTime: {exec_seconds}s\nLog: {latest_log}\n\nError Details:\n{error_summary}\n\nLast 50 lines:\n{''.join(latest_lines[-50:])}"
+            )
 
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
