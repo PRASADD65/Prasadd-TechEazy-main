@@ -244,7 +244,11 @@ def parse_logs():
         latest_log = None
         latest_lines = []
 
-        files = sorted([f for f in os.listdir(path) if f.endswith('.log')])
+        files = sorted(
+             [f for f in os.listdir(path) if f.endswith('.log')],
+             key=lambda f: os.path.getmtime(os.path.join(path, f)),
+             reverse=True 
+        )
         for fname in files:
             full_path = os.path.join(path, fname)
             with open(full_path, 'r') as f:
