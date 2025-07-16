@@ -35,12 +35,25 @@ jobs:
 
       - name: Get EC2 Public IP
         id: get_ip
+        continue-on-error: true
         run: |
-          IP=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
-            --query "Reservations[0].Instances[0].PublicIpAddress" \
-            --output text)
-          echo "ip=$IP" >> $GITHUB_OUTPUT
+          for i in {1..5}; do
+            IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
+              --query "Reservations[].Instances[].PublicIpAddress" \
+              --output text)
+
+            echo "Attempt $i: EC2 IP = $IP"
+
+            if [ "$IP" != "None" ] && [ -n "$IP" ]; then
+              echo "ip=$IP" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "ip=None" >> $GITHUB_OUTPUT
+          echo "EC2 IP could not be resolved — skipping parser trigger."
 
       - name: Wait for EC2 to Boot
         run: |
@@ -48,6 +61,8 @@ jobs:
           sleep 30
 
       - name: Trigger Log Parser Over SSH
+        if: steps.get_ip.outputs.ip != 'None'
+        continue-on-error: true
         run: |
           echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem
           chmod 600 key.pem
