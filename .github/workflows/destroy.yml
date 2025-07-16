@@ -30,14 +30,26 @@ jobs:
         id: get_ip
         continue-on-error: true
         run: |
-          IP=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
-            --query "Reservations[0].Instances[0].PublicIpAddress" \
-            --output text)
-          echo "Fetched EC2 IP: $IP"
-          echo "ip=$IP" >> $GITHUB_OUTPUT
+          for i in {1..5}; do
+            IP=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
+              --query "Reservations[].Instances[].PublicIpAddress" \
+              --output text)
+
+            echo "Attempt $i: EC2 IP = $IP"
+
+            if [ "$IP" != "None" ] && [ -n "$IP" ]; then
+              echo "ip=$IP" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "ip=None" >> $GITHUB_OUTPUT
+          echo "EC2 IP could not be resolved — continuing without parser trigger."
 
       - name: Trigger Log Parser Over SSH
+        if: steps.get_ip.outputs.ip != 'None'
         continue-on-error: true
         run: |
           echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem
