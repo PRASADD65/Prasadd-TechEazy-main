@@ -300,4 +300,6 @@ chmod +x /root/log_parser.py
 echo "Log Parser Written" >> /var/log/cloud-init-output.log
 
 # --- Schedule the parser to run every 5 mins ---
-(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | crontab -
+echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py" | sudo crontab -
+echo "Cron job for parser registered successfully" >> /var/log/cloud-init-output.log
+
