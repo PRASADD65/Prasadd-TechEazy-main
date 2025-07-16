@@ -25,29 +25,25 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
-     
+
       - name: Get EC2 Public IP
         id: get_ip
+        continue-on-error: true
         run: |
           IP=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=GitHubRunnerEC2" \
             --query "Reservations[0].Instances[0].PublicIpAddress" \
             --output text)
           echo "Fetched EC2 IP: $IP"
+          echo "ip=$IP" >> $GITHUB_OUTPUT
 
-          # Exit if IP is empty or 'None'
-           if [ -z "$IP" ] || [ "$IP" = "None" ]; then
-           echo "ERROR: EC2 IP not found. Instance might be terminated or unreachable."
-           exit 1
-           fi 
-          echo "ip=$IP" >> $GITHUB_OUTPUT     
-    
       - name: Trigger Log Parser Over SSH
+        continue-on-error: true
         run: |
-         echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem
-         chmod 600 key.pem
-         ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.get_ip.outputs.ip }} \
-          'sudo python3 /root/log_parser.py'
-      
+          echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem
+          chmod 600 key.pem
+          ssh -i key.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.get_ip.outputs.ip }} \
+            'sudo python3 /root/log_parser.py'
+
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
