@@ -278,12 +278,14 @@ def parse_logs():
         timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
 
         # Build SNS alert if failure found
-        if failure_count > 0 and latest_log:
-            error_lines = [
-                line.strip()
-                for line in latest_lines
-                if any(k in line.lower() for k in keywords)
-            ]
+        error_lines = [
+           line.strip()
+           for line in latest_lines
+           if any(k in line.lower() for k in keywords)
+           and not any(noise in line.lower() for noise in [
+           "aws_cloudwatch", "terraform", "creating...", "creation complete", "module."
+          ])
+        ]
             error_summary = "\n".join(f"- {line}" for line in error_lines) if error_lines else "No error lines found"
 
             alerts.append(
