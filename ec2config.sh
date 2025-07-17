@@ -204,6 +204,8 @@ cat <<'EOF' > /root/log_parser.py
 import os
 import time
 import boto3
+from datetime import datetime
+import pytz  # Ensure pytz is installed via: pip3 install pytz
 
 # Stage-specific log directories
 log_dirs = {
@@ -231,6 +233,9 @@ region = session.region_name or 'ap-south-2'
 # 🧭 Final SNS topic ARN
 sns_topic_arn = f"arn:aws:sns:{region}:{account_id}:cicd-failure-alerts"
 
+# Timezone for India Standard Time
+india_tz = pytz.timezone("Asia/Kolkata")
+
 def parse_logs():
     metrics = []
     alerts = []
@@ -244,11 +249,13 @@ def parse_logs():
         latest_log = None
         latest_lines = []
 
+        # Sort logs by last modified time, newest first
         files = sorted(
-             [f for f in os.listdir(path) if f.endswith('.log')],
-             key=lambda f: os.path.getmtime(os.path.join(path, f)),
-             reverse=True 
+            [f for f in os.listdir(path) if f.endswith('.log')],
+            key=lambda f: os.path.getmtime(os.path.join(path, f)),
+            reverse=True
         )
+
         for fname in files:
             full_path = os.path.join(path, fname)
             with open(full_path, 'r') as f:
@@ -261,36 +268,36 @@ def parse_logs():
                     latest_log = full_path
                     latest_lines = lines
                     exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
+                    break
 
         # Emit Prometheus-style metrics
         metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
         metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
 
+        # 📅 IST Timestamp for alert
+        timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
+
         # Build SNS alert if failure found
         if failure_count > 0 and latest_log:
-        # Filter error lines with keywords
-          error_lines = [
-             line.strip()
-             for line in latest_lines
-             if any(k in line.lower() for k in keywords)
-          ]
+            error_lines = [
+                line.strip()
+                for line in latest_lines
+                if any(k in line.lower() for k in keywords)
+            ]
+            error_summary = "\n".join(f"- {line}" for line in error_lines) if error_lines else "No error lines found"
 
-          # Format summary as bullet points
-           timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-           error_summary = "\n".join(f"- {line}" for line in error_lines) if error_lines else "No error lines found"
-           # Construct clean, readable alert
-           alerts.append(
-                f"""🚨 CI/CD Pipeline Failure
+            alerts.append(
+                f"""🚨 CI/CD Pipeline Failure Detected
 
-          🔹 Stage: {stage}
-          🔹 Execution Time: {exec_seconds}s
-          🔹 Log File: {latest_log}
+🔹 Stage: {stage}
+🔹 Timestamp: {timestamp}
+🔹 Execution Time: {exec_seconds}s
+🔹 Log File: {latest_log}
 
-           🧵 Error Summary:
-           {error_summary}
-          """
+🧵 Error Summary:
+{error_summary}
+"""
             )
-
 
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
