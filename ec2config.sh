@@ -286,19 +286,17 @@ def parse_logs():
            "aws_cloudwatch", "terraform", "creating...", "creation complete", "module."
           ])
         ]
-            error_summary = "\n".join(f"- {line}" for line in error_lines) if error_lines else "No error lines found"
-
-            alerts.append(
-                f"""🚨 CI/CD Pipeline Failure Detected
-
-🔹 Stage: {stage}
-🔹 Timestamp: {timestamp}
-🔹 Execution Time: {exec_seconds}s
-🔹 Log File: {latest_log}
-
-🧵 Error Summary:
-{error_summary}
-"""
+        error_summary = "\n".join(f"- {line}" for line in error_lines) if error_lines else "No error lines found"
+        alerts.append(
+            f"""🚨 CI/CD Pipeline Failure Detected
+        
+       🔹 Stage: {stage}
+       🔹 Timestamp: {timestamp}
+       🔹 Execution Time: {exec_seconds}s
+       🔹 Log File: {latest_log}
+       🧵 Error Summary:
+       {error_summary}
+         """
             )
 
     # Ensure output directory exists
