@@ -202,131 +202,137 @@ systemctl start grafana-server
 # -------------------------------
 cat <<'EOF' > /root/log_parser.py
 import os
-import time
+import json
 import boto3
 from datetime import datetime
-import pytz  # Ensure pytz is installed via: pip3 install pytz
+import pytz
 
-# Stage-specific log directories
 log_dirs = {
     'dev': '/home/ubuntu/runnerlog/dev',
     'prod': '/home/ubuntu/runnerlog/prod'
 }
 
-# Prometheus metrics and SNS alert file paths
 output_file = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
 sns_log_file = '/var/log/cicd_sns_alert.txt'
+alert_state_file = '/var/log/last_alerted_logs.json'
 
-# Failure keywords to look for in log files
 keywords = [
     'error', 'failed', 'exception',
     'terraform exited', 'exit code', 'code 1',
     'no such file or directory', 'cannot destroy', 'resource not found'
 ]
 
-# 🔐 Dynamically determine region and account ID
+noise_filters = [
+    "aws_cloudwatch", "terraform", "creating...", "creation complete", "module."
+]
+
+india_tz = pytz.timezone("Asia/Kolkata")
+
 session = boto3.session.Session()
 identity = boto3.client('sts').get_caller_identity()
 account_id = identity['Account']
 region = session.region_name or 'ap-south-2'
-
-# 🧭 Final SNS topic ARN
 sns_topic_arn = f"arn:aws:sns:{region}:{account_id}:cicd-failure-alerts"
 
-# Timezone for India Standard Time
-india_tz = pytz.timezone("Asia/Kolkata")
+# Load last alerted log state
+if os.path.exists(alert_state_file):
+    with open(alert_state_file, 'r') as f:
+        last_alerted_logs = json.load(f)
+else:
+    last_alerted_logs = {}
 
-def parse_logs():
-    metrics = []
-    alerts = []
+metrics = []
+alerts = []
 
-    for stage, path in log_dirs.items():
-        if not os.path.exists(path):
-            continue
+for stage, path in log_dirs.items():
+    if not os.path.exists(path):
+        continue
 
-        failure_count = 0
-        exec_seconds = 0
-        latest_log = None
-        latest_lines = []
+    failure_count = 0
+    exec_seconds = 0
+    latest_log = None
+    latest_lines = []
 
-        # Sort logs by last modified time, newest first
-        files = sorted(
-            [f for f in os.listdir(path) if f.endswith('.log')],
-            key=lambda f: os.path.getmtime(os.path.join(path, f)),
-            reverse=True
-        )
+    files = sorted(
+        [f for f in os.listdir(path) if f.endswith('.log')],
+        key=lambda f: os.path.getmtime(os.path.join(path, f)),
+        reverse=True
+    )
 
-        for fname in files:
-            full_path = os.path.join(path, fname)
-            with open(full_path, 'r') as f:
-                lines = f.readlines()
-            lower_lines = [line.lower() for line in lines]
+    for fname in files:
+        full_path = os.path.join(path, fname)
+        with open(full_path, 'r') as f:
+            lines = f.readlines()
+        lower_lines = [line.lower() for line in lines]
 
-            if any(any(k in line for k in keywords) for line in lower_lines):
-                failure_count += 1
-                if not latest_log:
-                    latest_log = full_path
-                    latest_lines = lines
-                    exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
-                    break
+        if any(any(k in line for k in keywords) for line in lower_lines):
+            failure_count += 1
+            if not latest_log:
+                latest_log = full_path
+                latest_lines = lines
+                exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
+                break
 
-        # Emit Prometheus-style metrics
-        metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
-        metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
+    metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
+    metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
 
-        # 📅 IST Timestamp for alert
-        timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
+    timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
 
-        # Build SNS alert if failure found
-        error_lines = [
-           line.strip()
-           for line in latest_lines
-           if any(k in line.lower() for k in keywords)
-           and not any(noise in line.lower() for noise in [
-           "aws_cloudwatch", "terraform", "creating...", "creation complete", "module."
-          ])
-        ]
-        error_summary = "\n".join(f"- {line}" for line in error_lines) if error_lines else "No error lines found"
+    error_lines = [
+        line.strip()
+        for line in latest_lines
+        if any(k in line.lower() for k in keywords)
+        and not any(noise in line.lower() for noise in noise_filters)
+    ]
+
+    if error_lines and latest_log and latest_log != last_alerted_logs.get(stage):
+        error_summary = "\n".join(f"- {line}" for line in error_lines)
         alerts.append(
             f"""🚨 CI/CD Pipeline Failure Detected
-        
-       🔹 Stage: {stage}
-       🔹 Timestamp: {timestamp}
-       🔹 Execution Time: {exec_seconds}s
-       🔹 Log File: {latest_log}
-       🧵 Error Summary:
-       {error_summary}
-         """
-            )
 
-    # Ensure output directory exists
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(output_file, 'w') as f:
-        f.write('\n'.join(metrics) + '\n')
+🔹 Stage: {stage}
+🔹 Timestamp: {timestamp}
+🔹 Execution Time: {exec_seconds}s
+🔹 Log File: {latest_log}
+🧵 Error Summary:
+{error_summary}
+"""
+        )
+        last_alerted_logs[stage] = latest_log
 
-    # Send SNS alert if needed
-    if alerts:
-        with open(sns_log_file, 'w') as f:
-            f.write('\n\n'.join(alerts))
-        try:
-            boto3.client('sns', region_name=region).publish(
-                TopicArn=sns_topic_arn,
-                Subject='CI/CD Pipeline Failure',
-                Message='\n\n'.join(alerts)
-            )
-            print("✅ SNS publish succeeded")
-        except Exception as e:
-            print("SNS publish failed:", e)
+# Write Prometheus metrics
+os.makedirs(os.path.dirname(output_file), exist_ok=True)
+with open(output_file, 'w') as f:
+    f.write('\n'.join(metrics) + '\n')
+
+# Send SNS alert if needed
+if alerts:
+    with open(sns_log_file, 'w') as f:
+        f.write('\n\n'.join(alerts))
+    try:
+        boto3.client('sns', region_name=region).publish(
+            TopicArn=sns_topic_arn,
+            Subject='CI/CD Pipeline Failure',
+            Message='\n\n'.join(alerts)
+        )
+        print("✅ SNS publish succeeded")
+    except Exception as e:
+        print("SNS publish failed:", e)
+
+# Save updated alert state
+with open(alert_state_file, 'w') as f:
+    json.dump(last_alerted_logs, f)
 
 if __name__ == "__main__":
     parse_logs()
-
 EOF
+
+# Make the script executable
 chmod +x /root/log_parser.py
 
+# Log confirmation
 echo "Log Parser Written" >> /var/log/cloud-init-output.log
 
-# --- Schedule the parser to run every 5 mins ---
-echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py" | sudo crontab -
+# Schedule the parser to run every 5 minutes
+echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py" | crontab -
 echo "Cron job for parser registered successfully" >> /var/log/cloud-init-output.log
-
