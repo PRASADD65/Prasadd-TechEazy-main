@@ -198,7 +198,7 @@ systemctl enable grafana-server
 systemctl start grafana-server
 
 # -------------------------------
-# Log Parser Script
+# Write the Log Parser Script
 # -------------------------------
 cat <<'EOF' > /root/log_parser.py
 import os
@@ -234,7 +234,6 @@ account_id = identity['Account']
 region = session.region_name or 'ap-south-2'
 sns_topic_arn = f"arn:aws:sns:{region}:{account_id}:cicd-failure-alerts"
 
-# Load last alerted log state
 if os.path.exists(alert_state_file):
     with open(alert_state_file, 'r') as f:
         last_alerted_logs = json.load(f)
@@ -244,51 +243,62 @@ else:
 metrics = []
 alerts = []
 
-for stage, path in log_dirs.items():
-    if not os.path.exists(path):
-        continue
+def parse_logs():
+    global last_alerted_logs
+    for stage, path in log_dirs.items():
+        if not os.path.exists(path):
+            continue
 
-    failure_count = 0
-    exec_seconds = 0
-    latest_log = None
-    latest_lines = []
+        failure_count = 0
+        exec_seconds = 0
+        latest_log = None
+        latest_lines = []
 
-    files = sorted(
-        [f for f in os.listdir(path) if f.endswith('.log')],
-        key=lambda f: os.path.getmtime(os.path.join(path, f)),
-        reverse=True
-    )
+        files = sorted(
+            [f for f in os.listdir(path) if f.endswith('.log')],
+            key=lambda f: os.path.getmtime(os.path.join(path, f)),
+            reverse=True
+        )
 
-    for fname in files:
-        full_path = os.path.join(path, fname)
-        with open(full_path, 'r') as f:
-            lines = f.readlines()
-        lower_lines = [line.lower() for line in lines]
+        for fname in files:
+            full_path = os.path.join(path, fname)
+            with open(full_path, 'r') as f:
+                lines = f.readlines()
+            lower_lines = [line.lower() for line in lines]
 
-        if any(any(k in line for k in keywords) for line in lower_lines):
-            failure_count += 1
-            if not latest_log:
+            if any(any(k in line for k in keywords) for line in lower_lines):
+                failure_count += 1
+                if not latest_log:
+                    latest_log = full_path
+                    latest_lines = lines
+                    exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
+                    break
+            elif not latest_log:
                 latest_log = full_path
                 latest_lines = lines
                 exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
-                break
 
-    metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
-    metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
+        metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
+        metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
 
-    timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
+        timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
 
-    error_lines = [
-        line.strip()
-        for line in latest_lines
-        if any(k in line.lower() for k in keywords)
-        and not any(noise in line.lower() for noise in noise_filters)
-    ]
+        error_lines = [
+            line.strip()
+            for line in latest_lines
+            if any(k in line.lower() for k in keywords)
+            and not any(noise in line.lower() for noise in noise_filters)
+        ]
 
-    if error_lines and latest_log and latest_log != last_alerted_logs.get(stage):
-        error_summary = "\n".join(f"- {line}" for line in error_lines)
-        alerts.append(
-            f"""🚨 CI/CD Pipeline Failure Detected
+        last_state = last_alerted_logs.get(stage, {})
+        last_log = last_state.get("log")
+        last_status = last_state.get("status")
+
+        if error_lines:
+            error_summary = "\n".join(f"- {line}" for line in error_lines)
+            if latest_log != last_log or last_status != "error":
+                alerts.append(
+                    f"""🚨 CI/CD Pipeline Failure Detected
 
 🔹 Stage: {stage}
 🔹 Timestamp: {timestamp}
@@ -297,31 +307,31 @@ for stage, path in log_dirs.items():
 🧵 Error Summary:
 {error_summary}
 """
-        )
-        last_alerted_logs[stage] = latest_log
+                )
+            last_alerted_logs[stage] = {"log": latest_log, "status": "error"}
+        else:
+            if latest_log != last_log or last_status == "error":
+                last_alerted_logs[stage] = {"log": latest_log, "status": "ok"}
 
-# Write Prometheus metrics
-os.makedirs(os.path.dirname(output_file), exist_ok=True)
-with open(output_file, 'w') as f:
-    f.write('\n'.join(metrics) + '\n')
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    with open(output_file, 'w') as f:
+        f.write('\n'.join(metrics) + '\n')
 
-# Send SNS alert if needed
-if alerts:
-    with open(sns_log_file, 'w') as f:
-        f.write('\n\n'.join(alerts))
-    try:
-        boto3.client('sns', region_name=region).publish(
-            TopicArn=sns_topic_arn,
-            Subject='CI/CD Pipeline Failure',
-            Message='\n\n'.join(alerts)
-        )
-        print("✅ SNS publish succeeded")
-    except Exception as e:
-        print("SNS publish failed:", e)
+    if alerts:
+        with open(sns_log_file, 'w') as f:
+            f.write('\n\n'.join(alerts))
+        try:
+            boto3.client('sns', region_name=region).publish(
+                TopicArn=sns_topic_arn,
+                Subject='CI/CD Pipeline Failure',
+                Message='\n\n'.join(alerts)
+            )
+            print("✅ SNS publish succeeded")
+        except Exception as e:
+            print("SNS publish failed:", e)
 
-# Save updated alert state
-with open(alert_state_file, 'w') as f:
-    json.dump(last_alerted_logs, f)
+    with open(alert_state_file, 'w') as f:
+        json.dump(last_alerted_logs, f)
 
 if __name__ == "__main__":
     parse_logs()
@@ -329,10 +339,8 @@ EOF
 
 # Make the script executable
 chmod +x /root/log_parser.py
+echo "✅ Log Parser Written" >> /var/log/cloud-init-output.log
 
-# Log confirmation
-echo "Log Parser Written" >> /var/log/cloud-init-output.log
-
-# Schedule the parser to run every 5 minutes
-echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py" | crontab -
-echo "Cron job for parser registered successfully" >> /var/log/cloud-init-output.log
+# Register cron job to run every 5 minutes
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | crontab -
+echo "✅ Cron job registered" >> /var/log/cloud-init-output.log
