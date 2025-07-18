@@ -98,7 +98,8 @@ alert_email             = "To subscribe the SNS Topic provide your email"
 - State tracked in /var/log/last_alerted_logs.json
 - Prometheus-compatible metrics in /var/lib/node_exporter/textfile_collector/
 ---
-## 🧪 Testing
+## 🧪 Testing - 
+- Repo 1 and Repo 2 works indivisually.
 - While provisioning repo2 cicd on the self hosted runner Pre error script define in the cicd already. The health check of the application will take time so in the 1st phase it will retun as error during the cicd provisioning. It will send a notification on your registered email as an error in the cicd provisoning with IST time, stage and exact reason included.  
 
 - To simulate a failure manually, once repo 2 run it's cicd pipeline on the self hosted runner you will get the log files at ubuntu/runnerlog/dev or ubuntu/runnerlog/prod. Inject error on log file, 
