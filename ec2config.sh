@@ -19,6 +19,15 @@ echo "export ACCOUNT_ID=\"${account_id}\"" >> /etc/environment
 source /etc/environment
 
 # -------------------------------
+# Create SNS topic ARN directory and write value
+# -------------------------------
+mkdir -p /home/ubuntu/snstopic
+echo "${sns_topic_arn}" > /home/ubuntu/snstopic/sns_topic_arn.txt
+chown ubuntu:ubuntu /home/ubuntu/snstopic/sns_topic_arn.txt
+chmod 600 /home/ubuntu/snstopic/sns_topic_arn.txt
+echo "✅ SNS Topic ARN written to /home/ubuntu/snstopic/sns_topic_arn.txt" >> /var/log/cloud-init-output.log
+
+# -------------------------------
 # Create directories
 # -------------------------------
 mkdir -p /home/ubuntu/github-runner /home/ubuntu/runnerlog/dev /home/ubuntu/runnerlog/prod /var/lib/node_exporter/textfile_collector /var/lib/grafana/dashboards
