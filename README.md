@@ -1,6 +1,8 @@
 # 🚀  Zero Mile - The Host
 ----
 ## 📘 Overview
+Integrated CI/CD Provisioning: Hosting, Monitoring, and Alerting.
+---
 ## GitHub repo used 02.
 -  Repo 1 - Prasadd-TechEazy-main
 -  Repo 2 - tech_eazy_PRASADD65_aws_internship
@@ -103,11 +105,8 @@ alert_email             = "To subscribe the SNS Topic provide your email"
 ```
 echo "ERROR: Simulated failure" >> /home/ubuntu/runnerlog/dev/dev<your_current_logfile>.log 
 sudo python3 /root/log_parser.py
-``
+```
+
 - It will show: ✅ SNS publish succeeded
 - An email notification on your registered email.
 - Grafana with error count and workflow runtime  with stage based. 
-
-
-
-
