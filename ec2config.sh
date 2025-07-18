@@ -223,7 +223,8 @@ keywords = [
 ]
 
 noise_filters = [
-    "aws_cloudwatch", "terraform", "creating...", "creation complete", "module."
+    "aws_cloudwatch", "terraform", "creating...", "creation complete", "module.",
+    "alarm_description", "alarm_name", "metric_name", "resource", "+", "="
 ]
 
 india_tz = pytz.timezone("Asia/Kolkata")
@@ -288,6 +289,8 @@ def parse_logs():
             for line in latest_lines
             if any(k in line.lower() for k in keywords)
             and not any(noise in line.lower() for noise in noise_filters)
+            and not line.strip().startswith(('+', '-', '~'))
+            and not line.strip().startswith('  +')
         ]
 
         last_state = last_alerted_logs.get(stage, {})
@@ -335,6 +338,7 @@ def parse_logs():
 
 if __name__ == "__main__":
     parse_logs()
+
 EOF
 
 # Make the script executable
