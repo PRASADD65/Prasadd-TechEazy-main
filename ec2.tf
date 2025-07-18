@@ -27,6 +27,7 @@ user_data = templatefile("${path.module}/ec2config.sh", {
   PROM_VERSION          = "2.48.0",
   account_id            = var.aws_account_id,
   region                = var.region
+  sns_topic_arn         = aws_sns_topic.cicd_failure_alerts.arn
 })
 
 
