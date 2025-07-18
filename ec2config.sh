@@ -342,5 +342,5 @@ chmod +x /root/log_parser.py
 echo "✅ Log Parser Written" >> /var/log/cloud-init-output.log
 
 # Register cron job to run every 5 minutes
-(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | crontab -
+(sudo crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /root/log_parser.py") | sudo crontab -
 echo "✅ Cron job registered" >> /var/log/cloud-init-output.log
