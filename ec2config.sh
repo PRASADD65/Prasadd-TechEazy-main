@@ -211,41 +211,29 @@ systemctl start grafana-server
 # -------------------------------
 cat <<'EOF' > /root/log_parser.py
 import os
+import re
 import json
 import boto3
 from datetime import datetime
 import pytz
 
-log_dirs = {
-    'dev': '/home/ubuntu/runnerlog/dev',
-    'prod': '/home/ubuntu/runnerlog/prod'
-}
+BASE_DIR = '/home/ubuntu/runnerlog'
+OUTPUT_FILE = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
+SNS_LOG_FILE = '/var/log/cicd_sns_alert.txt'
+ALERT_STATE_FILE = '/var/log/last_alerted_logs.json'
+INDIA_TZ = pytz.timezone("Asia/Kolkata")
 
-output_file = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
-sns_log_file = '/var/log/cicd_sns_alert.txt'
-alert_state_file = '/var/log/last_alerted_logs.json'
-
-keywords = [
-    'error', 'failed', 'exception',
-    'terraform exited', 'exit code', 'code 1',
-    'no such file or directory', 'cannot destroy', 'resource not found'
-]
-
-noise_filters = [
-    "aws_cloudwatch", "terraform", "creating...", "creation complete", "module.",
-    "alarm_description", "alarm_name", "metric_name", "resource", "+", "="
-]
-
-india_tz = pytz.timezone("Asia/Kolkata")
+KEYWORDS = ['error', 'failed', 'exception', 'terraform exited', 'exit code', 'code 1']
+NOISE_FILTERS = ['creating...', 'creation complete', 'module.', '+', '=', 'resource']
 
 session = boto3.session.Session()
 identity = boto3.client('sts').get_caller_identity()
 account_id = identity['Account']
-region = session.region_name or 'ap-south-2'
+region = session.region_name or 'ap-south-1'
 sns_topic_arn = f"arn:aws:sns:{region}:{account_id}:cicd-failure-alerts"
 
-if os.path.exists(alert_state_file):
-    with open(alert_state_file, 'r') as f:
+if os.path.exists(ALERT_STATE_FILE):
+    with open(ALERT_STATE_FILE, 'r') as f:
         last_alerted_logs = json.load(f)
 else:
     last_alerted_logs = {}
@@ -253,16 +241,26 @@ else:
 metrics = []
 alerts = []
 
+def extract_steps(lines):
+    steps = {}
+    current_step = "unknown"
+    for line in lines:
+        if "::group::" in line:
+            current_step = line.strip().split("::group::")[-1].strip()
+            steps[current_step] = {"lines": [], "failed": False}
+        elif current_step not in steps:
+            steps[current_step] = {"lines": [], "failed": False}
+        steps[current_step]["lines"].append(line)
+        if any(k in line.lower() for k in KEYWORDS):
+            steps[current_step]["failed"] = True
+    return steps
+
 def parse_logs():
     global last_alerted_logs
-    for stage, path in log_dirs.items():
-        if not os.path.exists(path):
+    for stage in os.listdir(BASE_DIR):
+        path = os.path.join(BASE_DIR, stage)
+        if not os.path.isdir(path):
             continue
-
-        failure_count = 0
-        exec_seconds = 0
-        latest_log = None
-        latest_lines = []
 
         files = sorted(
             [f for f in os.listdir(path) if f.endswith('.log')],
@@ -270,67 +268,63 @@ def parse_logs():
             reverse=True
         )
 
-        for fname in files:
-            full_path = os.path.join(path, fname)
-            with open(full_path, 'r') as f:
-                lines = f.readlines()
-            lower_lines = [line.lower() for line in lines]
+        if not files:
+            continue
 
-            if any(any(k in line for k in keywords) for line in lower_lines):
-                failure_count += 1
-                if not latest_log:
-                    latest_log = full_path
-                    latest_lines = lines
-                    exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
-                    break
-            elif not latest_log:
-                latest_log = full_path
-                latest_lines = lines
-                exec_seconds = int(os.path.getmtime(full_path) - os.path.getctime(full_path))
+        latest_log = os.path.join(path, files[0])
+        with open(latest_log, 'r') as f:
+            lines = f.readlines()
+
+        steps = extract_steps(lines)
+        failure_count = sum(1 for s in steps.values() if s["failed"])
+        success_count = len(steps) - failure_count
+        exec_seconds = int(os.path.getmtime(latest_log) - os.path.getctime(latest_log))
 
         metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
+        metrics.append(f'cicd_pipeline_success{{stage="{stage}"}} {success_count}')
         metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
+        metrics.append(f'cicd_pipeline_status{{stage="{stage}"}} {"0" if failure_count else "1"}')
 
-        timestamp = datetime.now(india_tz).strftime("%Y-%m-%d %I:%M:%S %p")
+        for step_name, step_data in steps.items():
+            metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}", step="{step_name}"}} {exec_seconds}')
+            if step_data["failed"]:
+                metrics.append(f'cicd_pipeline_failure{{stage="{stage}", step="{step_name}", reason="error"}} 1')
+            else:
+                metrics.append(f'cicd_pipeline_success{{stage="{stage}", step="{step_name}"}} 1')
 
+        timestamp = datetime.now(INDIA_TZ).strftime("%Y-%m-%d %I:%M:%S %p")
         error_lines = [
             line.strip()
-            for line in latest_lines
-            if any(k in line.lower() for k in keywords)
-            and not any(noise in line.lower() for noise in noise_filters)
-            and not line.strip().startswith(('+', '-', '~'))
-            and not line.strip().startswith('  +')
+            for line in lines
+            if any(k in line.lower() for k in KEYWORDS)
+            and not any(n in line.lower() for n in NOISE_FILTERS)
         ]
 
         last_state = last_alerted_logs.get(stage, {})
         last_log = last_state.get("log")
         last_status = last_state.get("status")
 
-        if error_lines:
-            error_summary = "\n".join(f"- {line}" for line in error_lines)
-            if latest_log != last_log or last_status != "error":
-                alerts.append(
-                    f"""🚨 CI/CD Pipeline Failure Detected
+        if error_lines and (latest_log != last_log or last_status != "error"):
+            alerts.append(
+f"""🚨 CI/CD Pipeline Failure Detected
 
 🔹 Stage: {stage}
 🔹 Timestamp: {timestamp}
 🔹 Execution Time: {exec_seconds}s
 🔹 Log File: {latest_log}
 🧵 Error Summary:
-{error_summary}
-"""
-                )
+{chr(10).join(f"- {line}" for line in error_lines)}
+""")
             last_alerted_logs[stage] = {"log": latest_log, "status": "error"}
-        else:
-            if latest_log != last_log or last_status == "error":
-                last_alerted_logs[stage] = {"log": latest_log, "status": "ok"}
+        elif not error_lines and (latest_log != last_log or last_status == "error"):
+            last_alerted_logs[stage] = {"log": latest_log, "status": "ok"}
 
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(output_file, 'w') as f:
+    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+    with open(OUTPUT_FILE, 'w') as f:
         f.write('\n'.join(metrics) + '\n')
 
     if alerts:
-        with open(sns_log_file, 'w') as f:
+        with open(SNS_LOG_FILE, 'w') as f:
             f.write('\n\n'.join(alerts))
         try:
             boto3.client('sns', region_name=region).publish(
@@ -342,11 +336,12 @@ def parse_logs():
         except Exception as e:
             print("SNS publish failed:", e)
 
-    with open(alert_state_file, 'w') as f:
+    with open(ALERT_STATE_FILE, 'w') as f:
         json.dump(last_alerted_logs, f)
 
 if __name__ == "__main__":
     parse_logs()
+
 EOF
 
 # Make the script executable
