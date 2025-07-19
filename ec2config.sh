@@ -151,44 +151,38 @@ EOF
 
 cat <<EOF > /var/lib/grafana/dashboards/cicd_dashboard.json
 {
-  "title": "CI/CD Pipeline Failures",
+  "title": "Dynamic CI/CD Observability",
   "editable": true,
   "panels": [
     {
-      "type": "graph",
-      "title": "Failures by Stage",
-      "targets": [
-        {
-          "expr": "sum by(stage, reason) (cicd_pipeline_failure)",
-          "legendFormat": "{{stage}} - {{reason}}"
+      "type": "stat",
+      "title": "Pipeline Status by Stage",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Fail" }, "1": { "text": "Pass" } } }
+          ]
         }
-      ],
-      "xaxis": {"mode": "time"},
-      "yaxes": [{"label": "Failures"}],
-      "thresholds": {
-        "mode": "absolute",
-        "steps": [
-          { "color": "green", "value": 0 },
-          { "color": "yellow", "value": 1 },
-          { "color": "red", "value": 2 }
-        ]
       },
-      "fill": 1,
-      "lineWidth": 2
+      "targets": [
+        { "expr": "cicd_pipeline_status", "legendFormat": "{{stage}}" }
+      ]
     },
     {
       "type": "graph",
-      "title": "Execution Time by Stage",
+      "title": "Stage Execution Duration",
       "targets": [
-        {
-          "expr": "cicd_pipeline_exec_seconds",
-          "legendFormat": "{{stage}}"
-        }
+        { "expr": "cicd_pipeline_exec_seconds", "legendFormat": "{{stage}}" }
       ],
-      "xaxis": {"mode": "time"},
-      "yaxes": [{"label": "Seconds"}],
-      "fill": 1,
-      "lineWidth": 2,
+      "xaxis": { "mode": "time" },
+      "yaxes": [{ "label": "Seconds" }],
       "thresholds": {
         "mode": "absolute",
         "steps": [
@@ -197,9 +191,45 @@ cat <<EOF > /var/lib/grafana/dashboards/cicd_dashboard.json
           { "color": "red", "value": 60 }
         ]
       }
+    },
+    {
+      "type": "bar",
+      "title": "Step-level Failures",
+      "targets": [
+        { "expr": "cicd_pipeline_failure", "legendFormat": "{{stage}} - {{step}} - {{reason}}" }
+      ]
+    },
+    {
+      "type": "heatmap",
+      "title": "Failures Over Time",
+      "targets": [
+        { "expr": "cicd_pipeline_failure", "legendFormat": "{{stage}}" }
+      ],
+      "xaxis": { "mode": "time" },
+      "yaxes": [{ "label": "Count" }]
+    },
+    {
+      "type": "table",
+      "title": "Step Execution Summary",
+      "targets": [
+        { "expr": "cicd_pipeline_exec_seconds", "legendFormat": "{{stage}} - {{step}}" }
+      ]
     }
-  ]
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "stage",
+        "label": "Filter by Stage",
+        "datasource": "Prometheus",
+        "query": "label_values(cicd_pipeline_status, stage)",
+        "multi": true
+      }
+    ]
+  }
 }
+
 EOF
 
 
