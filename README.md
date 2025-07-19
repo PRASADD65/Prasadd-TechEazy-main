@@ -96,7 +96,8 @@ alert_email             = "To subscribe the SNS Topic provide your email"
 - Parser logs execution to /var/log/parser_execution.log
 - Alerts written to /var/log/cicd_sns_alert.txt
 - State tracked in /var/log/last_alerted_logs.json
-- Prometheus-compatible metrics in /var/lib/node_exporter/textfile_collector/
+- Prometheus -compatible metrics in /var/lib/node_exporter/textfile_collector/ : <ec2 pubip>:9090
+- Grafana    - Error dashboard - Dashboard -> cicd observability -> error dashboards. <ec2 pubip>:3000
 ---
 ## 🧪 Testing - 
 - Repo 1 and Repo 2 works indivisually.
