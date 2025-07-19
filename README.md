@@ -1,4 +1,4 @@
-# 🚀  Zero Mile - The Host (Assignment 6)
+# 🚀  Zero Mile - The Host: CI/CD Monitoring and Alert (Assignment 6)
 ----
 ## 📘 Overview
 Integrated CI/CD Provisioning: Hosting, Monitoring, and Alerting.
