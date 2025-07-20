@@ -240,28 +240,34 @@ systemctl start grafana-server
 # Write the Log Parser Script
 # -------------------------------
 cat <<'EOF' > /root/log_parser.py
+#!/usr/bin/env python3
 import os
 import re
 import json
 import boto3
+import socket
 from datetime import datetime
 import pytz
 
+# Constants
 BASE_DIR = '/home/ubuntu/runnerlog'
 OUTPUT_FILE = '/var/lib/node_exporter/textfile_collector/cicd_failures.prom'
 SNS_LOG_FILE = '/var/log/cicd_sns_alert.txt'
 ALERT_STATE_FILE = '/var/log/last_alerted_logs.json'
 INDIA_TZ = pytz.timezone("Asia/Kolkata")
 
+# Keywords and filters
 KEYWORDS = ['error', 'failed', 'exception', 'terraform exited', 'exit code', 'code 1']
 NOISE_FILTERS = ['creating...', 'creation complete', 'module.', '+', '=', 'resource']
 
+# AWS setup
 session = boto3.session.Session()
 identity = boto3.client('sts').get_caller_identity()
 account_id = identity['Account']
 region = session.region_name or 'ap-south-1'
 sns_topic_arn = f"arn:aws:sns:{region}:{account_id}:cicd-failure-alerts"
 
+# Load last alert state
 if os.path.exists(ALERT_STATE_FILE):
     with open(ALERT_STATE_FILE, 'r') as f:
         last_alerted_logs = json.load(f)
@@ -306,17 +312,22 @@ def parse_logs():
             lines = f.readlines()
 
         steps = extract_steps(lines)
+        total_lines = sum(len(s["lines"]) for s in steps.values())
+        total_duration = int(os.path.getmtime(latest_log) - os.path.getctime(latest_log))
+
         failure_count = sum(1 for s in steps.values() if s["failed"])
         success_count = len(steps) - failure_count
-        exec_seconds = int(os.path.getmtime(latest_log) - os.path.getctime(latest_log))
 
         metrics.append(f'cicd_pipeline_failure{{stage="{stage}", reason="error"}} {failure_count}')
         metrics.append(f'cicd_pipeline_success{{stage="{stage}"}} {success_count}')
-        metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {exec_seconds}')
+        metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}"}} {total_duration}')
         metrics.append(f'cicd_pipeline_status{{stage="{stage}"}} {"0" if failure_count else "1"}')
+        metrics.append(f'cicd_pipeline_step_count{{stage="{stage}"}} {len(steps)}')
 
         for step_name, step_data in steps.items():
-            metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}", step="{step_name}"}} {exec_seconds}')
+            step_lines = len(step_data["lines"])
+            step_duration = int((step_lines / total_lines) * total_duration) if total_lines > 0 else 0
+            metrics.append(f'cicd_pipeline_exec_seconds{{stage="{stage}", step="{step_name}"}} {step_duration}')
             if step_data["failed"]:
                 metrics.append(f'cicd_pipeline_failure{{stage="{stage}", step="{step_name}", reason="error"}} 1')
             else:
@@ -340,7 +351,7 @@ f"""🚨 CI/CD Pipeline Failure Detected
 
 🔹 Stage: {stage}
 🔹 Timestamp: {timestamp}
-🔹 Execution Time: {exec_seconds}s
+🔹 Execution Time: {total_duration}s
 🔹 Log File: {latest_log}
 🧵 Error Summary:
 {chr(10).join(f"- {line}" for line in error_lines)}
@@ -348,6 +359,10 @@ f"""🚨 CI/CD Pipeline Failure Detected
             last_alerted_logs[stage] = {"log": latest_log, "status": "error"}
         elif not error_lines and (latest_log != last_log or last_status == "error"):
             last_alerted_logs[stage] = {"log": latest_log, "status": "ok"}
+
+    # Add parser health metric
+    hostname = socket.gethostname()
+    metrics.append(f'log_parser_last_run_timestamp{{host="{hostname}"}} {int(datetime.now().timestamp())}')
 
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     with open(OUTPUT_FILE, 'w') as f:
