@@ -1,9 +1,9 @@
-# 🚀  Zero Mile - The Host: CI/CD Monitoring and Alert (Assignment 6)
+# 🚀  Zero Mile - The Host: CI/CD Monitoring and Alert
 ----
 ## 📘 Overview
 Integrated CI/CD Provisioning: Hosting, Monitoring, and Alerting.
 ---
-## GitHub repo used 02.
+## GitHub repo used: 02
 -  Repo 1 - Prasadd-TechEazy-main
 -  Repo 2 - tech_eazy_PRASADD65_aws_internship
 ---
